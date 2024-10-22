@@ -100,14 +100,7 @@ def main():
         help="Capture output instead of showing it",
         required=False,
     )
-    parser.add_argument(
-        "-j",
-        "--jobs",
-        type=int,
-        help="Number of threads to use (default all available)",
-        default=multiprocessing.cpu_count(),
-        required=False,
-    )
+
     args = parser.parse_args()
 
     # Require twitchdownloadercli and sd to be installed
@@ -159,7 +152,7 @@ def main():
                 "--output",
                 str(file_path),
                 "-t",
-                str(args.jobs),
+                str(4),
                 "--timestamp-format",
                 "None",
                 "--collision",
