@@ -1,2 +1,6 @@
 requests
 python-dotenv
+torch
+tiktoken
+numpy
+ipykernel
