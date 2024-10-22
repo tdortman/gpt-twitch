@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 import subprocess as sp
 from pathlib import Path
-import multiprocessing
+import multiprocessing as mp
 
 load_dotenv()
 
@@ -100,6 +100,14 @@ def main():
         help="Capture output instead of showing it",
         required=False,
     )
+    parser.add_argument(
+        "--threads",
+        "-t",
+        help="Number of threads to use for downloading (default: min(cpu_count(), 4))",
+        required=False,
+        type=int,
+        default=min(mp.cpu_count(), 4),
+    )
 
     args = parser.parse_args()
 
@@ -152,7 +160,7 @@ def main():
                 "--output",
                 str(file_path),
                 "-t",
-                str(4),
+                str(args.threads),
                 "--timestamp-format",
                 "None",
                 "--collision",
