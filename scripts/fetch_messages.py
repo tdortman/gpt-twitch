@@ -34,7 +34,9 @@ class TwitchVODFetcher:
         }
 
         response = requests.get(
-            f"{self.base_url}/users", headers=headers, params={"login": username}
+            f"{self.base_url}/users",
+            headers=headers,
+            params={"login": username},
         )
 
         data = response.json()["data"]
@@ -64,7 +66,9 @@ class TwitchVODFetcher:
                 params["after"] = pagination_cursor
 
             response = requests.get(
-                f"{self.base_url}/videos", headers=headers, params=params
+                f"{self.base_url}/videos",
+                headers=headers,
+                params=params,
             )
 
             data = response.json()
