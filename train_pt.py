@@ -3,9 +3,7 @@ import os
 
 import torch
 
-from models import GPTLanguageModel
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
+from models_pt import GPTLanguageModel
 
 
 def read_all_files_to_string(directory):
@@ -39,9 +37,6 @@ def prepare_data(text, device):
     val_data = data[int(n * 0.8) :].to(device)
 
     return train_data, val_data, encode, decode, vocab_size
-
-
-text = read_all_files_to_string("data")
 
 
 def get_batch(data, block_size, batch_size):
@@ -108,18 +103,18 @@ def train_model(
         optimizer.step()
 
 
-batch_size = 32  # how many independent sequences will we process in parallel?
-block_size = 64  # what is the maximum context length for predictions?
-max_epochs = 5000
-eval_interval = 50
+batch_size = 32
+block_size = 512
+max_epochs = 1000
+eval_interval = 250
 learning_rate = 3e-4
 device = "cuda" if torch.cuda.is_available() else "cpu"
-eval_iters = 200
 n_embd = 384
 n_head = 6
 n_layer = 6
 dropout = 0.2
 
+text = read_all_files_to_string("data")
 train_data, val_data, encode, decode, vocab_size = prepare_data(text, device)
 
 model = GPTLanguageModel(
@@ -132,16 +127,23 @@ model = GPTLanguageModel(
     dropout,
 ).to(device)
 
-train_model(
-    model,
-    train_data,
-    val_data,
-    block_size,
-    batch_size,
-    learning_rate,
-    max_epochs,
-    eval_interval,
-)
+if os.getenv("LOAD_MODEL"):
+    model.load_state_dict(torch.load("model.pt"))
+    model.eval()
+else:
+    train_model(
+        model,
+        train_data,
+        val_data,
+        block_size,
+        batch_size,
+        learning_rate,
+        max_epochs,
+        eval_interval,
+    )
+
+if os.getenv("SAVE_MODEL"):
+    torch.save(model.state_dict(), "model.pt")
 
 context = torch.zeros((1, 1), dtype=torch.long, device=device)
 print(decode(model.generate(context, max_new_tokens=100)[0].tolist()))

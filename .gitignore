@@ -3,3 +3,4 @@ data
 .env
 __pycache__
 *.pt
+model_tf
