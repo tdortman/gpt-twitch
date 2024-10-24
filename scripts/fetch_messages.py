@@ -5,8 +5,17 @@ from dotenv import load_dotenv
 import subprocess as sp
 from pathlib import Path
 import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor
+import logging
+from datetime import datetime
 
 load_dotenv()
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 
 class TwitchVODFetcher:
@@ -74,7 +83,6 @@ class TwitchVODFetcher:
             data = response.json()
             vods.extend(data["data"])
 
-            # Check if there are more pages
             pagination = data.get("pagination", {})
             if not pagination.get("cursor"):
                 break
@@ -82,6 +90,73 @@ class TwitchVODFetcher:
             pagination_cursor = pagination["cursor"]
 
         return vods
+
+
+def download_and_process_vod(args):
+    """Worker function for processing a single VOD"""
+    id, data_dir, capture_output, threads = args
+    file_path = Path(data_dir) / f"{id}.txt"
+    process_id = os.getpid()
+
+    if file_path.exists() and file_path.stat().st_size > 0:
+        logger.info(
+            f"[Process {process_id}] Skipping {file_path} as it already exists and is not empty"
+        )
+        return id, True, "Skipped - already exists"
+
+    logger.info(
+        f"[Process {process_id}] Downloading chat for https://www.twitch.tv/videos/{id}"
+    )
+    start_time = datetime.now()
+
+    try:
+        # Download chat
+        sp.run(
+            [
+                "twitchdownloadercli",
+                "chatdownload",
+                "--id",
+                id,
+                "-t",
+                str(mp.cpu_count() // threads),
+                "--output",
+                str(file_path),
+                "--timestamp-format",
+                "None",
+                "--collision",
+                "Overwrite",
+                "--banner",
+                "false",
+            ],
+            text=True,
+            stdout=sp.PIPE if capture_output else None,
+            stderr=sp.PIPE if capture_output else None,
+            check=True,
+        )
+
+        # Process with sd
+        sp.run(
+            ["sd", "^[^:]*: ", "", str(file_path)],
+            text=True,
+            stdout=sp.PIPE if capture_output else None,
+            stderr=sp.PIPE if capture_output else None,
+            check=True,
+        )
+
+        duration = datetime.now() - start_time
+        logger.info(
+            f"[Process {process_id}] Completed VOD {id} in {duration.total_seconds():.2f}s"
+        )
+        return id, True, "Success"
+
+    except sp.CalledProcessError as e:
+        logger.error(
+            f"[Process {process_id}] Subprocess error for VOD {id}: {e.stderr}"
+        )
+        return id, False, f"Error: {e.stderr}"
+    except Exception as e:
+        logger.error(f"[Process {process_id}] Unexpected error for VOD {id}: {str(e)}")
+        return id, False, f"Error: {str(e)}"
 
 
 def main():
@@ -101,37 +176,30 @@ def main():
         required=False,
     )
     parser.add_argument(
-        "--threads",
-        "-t",
-        help="Number of threads to use for downloading (default: min(cpu_count(), 4))",
+        "--jobs",
+        "-j",
+        help="Number of VODs to download in parallel (default: cpu_count() // 4)",
         required=False,
         type=int,
-        default=min(mp.cpu_count(), 4),
+        default=mp.cpu_count() // 4,
     )
 
     args = parser.parse_args()
 
-    # Require twitchdownloadercli and sd to be installed
-    if (
-        not sp.run(["which", "twitchdownloadercli"], capture_output=True).returncode
-        == 0
-    ):
-        print(
-            "twitchdownloadercli not found. Please install it from https://github.com/lay295/TwitchDownloader/releases (NOT THE GUI)"
-        )
-        exit(1)
-
-    if not sp.run(["which", "sd"], capture_output=True).returncode == 0:
-        print("sd not found. Please install it from https://github.com/chmln/sd")
-        exit(1)
+    # Check dependencies
+    for cmd in ["twitchdownloadercli", "sd"]:
+        if sp.run(["which", cmd], capture_output=True).returncode != 0:
+            logger.error(f"{cmd} not found. Please install it first.")
+            exit(1)
 
     fetcher = TwitchVODFetcher(
         os.getenv("TWITCH_CLIENT_ID"),
         os.getenv("TWITCH_CLIENT_SECRET"),
     )
-    vods = fetcher.get_vods(args.username)
 
-    ids = map(lambda x: x["id"], vods)
+    logger.info(f"Fetching VODs for user {args.username}")
+    vods = fetcher.get_vods(args.username)
+    logger.info(f"Found {len(vods)} VODs")
 
     data_dir = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "data", args.username)
@@ -139,51 +207,27 @@ def main():
 
     os.makedirs(data_dir, exist_ok=True)
 
-    capture_output = args.quiet
+    # Prepare work items
+    work_items = [(vod["id"], data_dir, args.quiet, args.jobs) for vod in vods]
 
-    for id in ids:
-        file_path = Path(data_dir) / f"{id}.txt"
+    logger.info(f"Starting download with {args.jobs} parallel processes")
+    start_time = datetime.now()
 
-        if file_path.exists() and file_path.stat().st_size > 0:
-            print(f"Skipping {file_path} as it already exists and is not empty")
-            continue
+    with ProcessPoolExecutor(max_workers=args.jobs) as executor:
+        results = list(executor.map(download_and_process_vod, work_items))
 
-        print(f"Downloading chat for https://www.twitch.tv/videos/{id}")
+    duration = datetime.now() - start_time
+    successful = sum(1 for _, success, _ in results if success)
 
-        # Download chat
-        result = sp.run(
-            [
-                "twitchdownloadercli",
-                "chatdownload",
-                "--id",
-                id,
-                "--output",
-                str(file_path),
-                "-t",
-                str(args.threads),
-                "--timestamp-format",
-                "None",
-                "--collision",
-                "Overwrite",
-            ],
-            text=True,
-            stdout=sp.PIPE if capture_output else None,
-            stderr=sp.PIPE if capture_output else None,
-        )
+    logger.info(f"Download completed in {duration.total_seconds():.2f}s")
+    logger.info(f"Successfully processed {successful}/{len(vods)} VODs")
 
-        if result.returncode != 0:
-            continue
-
-        # Process with sd
-        result = sp.run(
-            ["sd", "^[^:]*: ", "", str(file_path)],
-            text=True,
-            stdout=sp.PIPE if capture_output else None,
-            stderr=sp.PIPE if capture_output else None,
-        )
-
-        if result.returncode != 0:
-            print(f"Error processing chat file for VOD {id}")
+    # Print errors if any
+    errors = [(id, msg) for id, success, msg in results if not success]
+    if errors:
+        logger.error("The following VODs had errors:")
+        for id, msg in errors:
+            logger.error(f"VOD {id}: {msg}")
 
 
 if __name__ == "__main__":
