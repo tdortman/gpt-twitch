@@ -8,12 +8,28 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor
 import logging
 from datetime import datetime
+from colorlog import ColoredFormatter
 
 load_dotenv()
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format="[%(levelname)s] - %(message)s")
+formatter = ColoredFormatter(
+    "%(log_color)s[%(levelname)s] - %(message)s",
+    log_colors={
+        'DEBUG': 'cyan',
+        'INFO': 'green',
+        'WARNING': 'yellow',
+        'ERROR': 'red',
+        'CRITICAL': 'bold_red',
+    }
+)
+
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+
 logger = logging.getLogger(__name__)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 
 class TwitchVODFetcher:

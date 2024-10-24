@@ -4,3 +4,4 @@ tiktoken
 numpy
 ipykernel
 scikit-learn
+colorlog
