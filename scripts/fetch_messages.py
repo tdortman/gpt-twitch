@@ -12,9 +12,7 @@ from datetime import datetime
 load_dotenv()
 
 # Set up logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="[%(levelname)s] - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -96,17 +94,12 @@ def download_and_process_vod(args):
     """Worker function for processing a single VOD"""
     id, data_dir, capture_output, threads = args
     file_path = Path(data_dir) / f"{id}.txt"
-    process_id = os.getpid()
 
     if file_path.exists() and file_path.stat().st_size > 0:
-        logger.info(
-            f"[Process {process_id}] Skipping {file_path} as it already exists and is not empty"
-        )
+        logger.info(f"Skipping {file_path} as it already exists and is not empty")
         return id, True, "Skipped - already exists"
 
-    logger.info(
-        f"[Process {process_id}] Downloading chat for https://www.twitch.tv/videos/{id}"
-    )
+    logger.info(f"Downloading chat for https://www.twitch.tv/videos/{id}")
     start_time = datetime.now()
 
     try:
@@ -144,18 +137,14 @@ def download_and_process_vod(args):
         )
 
         duration = datetime.now() - start_time
-        logger.info(
-            f"[Process {process_id}] Completed VOD {id} in {duration.total_seconds():.2f}s"
-        )
+        logger.info(f"Completed VOD {id} in {duration.total_seconds():.2f}s")
         return id, True, "Success"
 
     except sp.CalledProcessError as e:
-        logger.error(
-            f"[Process {process_id}] Subprocess error for VOD {id}: {e.stderr}"
-        )
+        logger.error(f"Subprocess error for VOD {id}: {e.stderr}")
         return id, False, f"Error: {e.stderr}"
     except Exception as e:
-        logger.error(f"[Process {process_id}] Unexpected error for VOD {id}: {str(e)}")
+        logger.error(f"Unexpected error for VOD {id}: {str(e)}")
         return id, False, f"Error: {str(e)}"
 
 
