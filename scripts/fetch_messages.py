@@ -127,7 +127,7 @@ def download_and_process_vod(args):
             check=True,
         )
 
-        # Process with sd
+        # Remove names (<name>: <message>)
         sp.run(
             ["sd", "^[^:]*: ", "", str(file_path)],
             text=True,
