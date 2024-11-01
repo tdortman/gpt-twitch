@@ -115,7 +115,6 @@ class GPTLanguageModel(nn.Module):
         block_size,
         n_layer,
         n_head,
-        device,
         dropout,
     ):
         super().__init__()
@@ -134,7 +133,6 @@ class GPTLanguageModel(nn.Module):
         )
         self.ln_f = nn.LayerNorm(n_embd)
         self.lm_head = nn.Linear(n_embd, vocab_size)
-        self.device = device
         self.block_size = block_size
 
         self.apply(self._init_weights)
@@ -151,7 +149,7 @@ class GPTLanguageModel(nn.Module):
         B, T = idx.shape
 
         tok_emb = self.token_embedding_table(idx)
-        pos_emb = self.position_embedding_table(torch.arange(T, device=self.device))
+        pos_emb = self.position_embedding_table(torch.arange(T, device=idx.device))
         x = tok_emb + pos_emb
         x = self.blocks(x)
         x = self.ln_f(x)

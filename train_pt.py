@@ -2,6 +2,7 @@ import glob
 import os
 
 import torch
+import torch.nn as nn
 
 from models_pt import GPTLanguageModel
 
@@ -15,7 +16,7 @@ def read_all_files_to_string(directory):
     return combined_string
 
 
-def prepare_data(text, device):
+def prepare_data(text):
     lines = text.splitlines()
     lines = [line for line in lines if all(c.isascii() for c in line)]
     chars = sorted(list(set("".join(lines))))
@@ -30,11 +31,11 @@ def prepare_data(text, device):
         return "".join([itos[i] for i in tokens])
 
     encoded_lines = [torch.tensor(encode(line), dtype=torch.long) for line in lines]
-    data = torch.cat(encoded_lines)
+    data = torch.cat(encoded_lines).cuda()
 
     n = len(data)
-    train_data = data[: int(n * 0.8)].to(device)
-    val_data = data[int(n * 0.8) :].to(device)
+    train_data = data[: int(n * 0.8)]
+    val_data = data[int(n * 0.8) :]
 
     return train_data, val_data, encode, decode, vocab_size
 
@@ -77,45 +78,37 @@ def train_model(
     batch_size,
     learning_rate,
     max_epochs,
-    eval_interval,
 ):
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
     for epoch in range(max_epochs):
-        if epoch % eval_interval == 0:
-            losses = estimate_loss(
-                train_data,
-                val_data,
-                eval_interval,
-                block_size,
-                batch_size,
-                model,
-            )
-
-            print(
-                f"Epoch {epoch}: Train loss {losses['train']:.4f}, Val loss {losses['val']:.4f}"
-            )
-
         x_batch, y_batch = get_batch(train_data, block_size, batch_size)
-        logits, loss = model(x_batch, y_batch)
+        _, train_loss = model(x_batch, y_batch)
         optimizer.zero_grad(set_to_none=True)
-        loss.backward()
+        train_loss.backward()
         optimizer.step()
 
+        output = f"Epoch {epoch}: Train loss {train_loss:.4f}"
 
-batch_size = 32
+        if epoch % 10 == 0:
+            x_batch, y_batch = get_batch(val_data, block_size, batch_size)
+            _, val_loss = model(x_batch, y_batch)
+            output += f", Val loss {val_loss:.4f}"
+
+        print(output)
+
+
+batch_size = 16
 block_size = 512
 max_epochs = 1000
-eval_interval = 250
 learning_rate = 3e-4
-device = "cuda" if torch.cuda.is_available() else "cpu"
 n_embd = 384
 n_head = 6
 n_layer = 6
 dropout = 0.2
 
-text = read_all_files_to_string("data")
-train_data, val_data, encode, decode, vocab_size = prepare_data(text, device)
+text = read_all_files_to_string("data/shakespeare")
+train_data, val_data, encode, decode, vocab_size = prepare_data(text)
 
 model = GPTLanguageModel(
     vocab_size,
@@ -123,9 +116,9 @@ model = GPTLanguageModel(
     block_size,
     n_layer,
     n_head,
-    device,
     dropout,
-).to(device)
+)
+model = nn.DataParallel(model).cuda()
 
 if os.getenv("LOAD_MODEL"):
     model.load_state_dict(torch.load("model.pt"))
@@ -139,11 +132,10 @@ else:
         batch_size,
         learning_rate,
         max_epochs,
-        eval_interval,
     )
 
 if os.getenv("SAVE_MODEL"):
     torch.save(model.state_dict(), "model.pt")
 
-context = torch.zeros((1, 1), dtype=torch.long, device=device)
+context = torch.zeros((1, 1), dtype=torch.long).cuda()
 print(decode(model.generate(context, max_new_tokens=100)[0].tolist()))

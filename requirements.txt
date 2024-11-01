@@ -5,3 +5,4 @@ numpy
 ipykernel
 scikit-learn
 colorlog
+tqdm
