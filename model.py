@@ -45,7 +45,7 @@ class MultiHeadAttention(nn.Module):
         return out
 
 
-class FeedFoward(nn.Module):
+class MLP(nn.Module):
     """a simple linear layer followed by a non-linearity"""
 
     def __init__(self, n_embd, dropout):
@@ -64,21 +64,21 @@ class FeedFoward(nn.Module):
 class Block(nn.Module):
     """Transformer block: communication followed by computation"""
 
-    def __init__(self, n_embd, n_head, dropout, block_size):
+    def __init__(self, n_embd, n_head, dropout, block_size,):
         super().__init__()
         head_size = n_embd // n_head
         self.sa = MultiHeadAttention(n_head, head_size, dropout, n_embd, block_size)
-        self.ffwd = FeedFoward(n_embd, dropout)
+        self.mlp = MLP(n_embd, dropout)
         self.ln1 = nn.LayerNorm(n_embd)
         self.ln2 = nn.LayerNorm(n_embd)
 
     def forward(self, x):
         x = x + self.sa(self.ln1(x))
-        x = x + self.ffwd(self.ln2(x))
+        x = x + self.mlp(self.ln2(x))
         return x
 
 
-class GPTLanguageModel(nn.Module):
+class GPT(nn.Module):
     def __init__(
         self,
         vocab_size,

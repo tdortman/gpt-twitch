@@ -8,7 +8,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 
-from model import GPTLanguageModel
+from model import GPT
 from trainer import Trainer  # Import Trainer class from the appropriate module
 
 
@@ -63,13 +63,7 @@ def prepare_data(text: str):
     if not encoded_lines:
         raise ValueError("No lines were encoded. Check the encoding process.")
 
-    data = torch.cat(encoded_lines)
-
-    n = len(data)
-    train_data = data[: int(n * 0.8)]
-    val_data = data[int(n * 0.8) :]
-
-    return train_data, val_data, encode, decode, vocab_size
+    return torch.cat(encoded_lines), encode, decode, vocab_size
 
 
 class TextDataset(Dataset):
@@ -88,7 +82,7 @@ class TextDataset(Dataset):
 
 batch_size = 128
 block_size = 128
-max_epochs = 20
+max_epochs = 100
 learning_rate = 3e-4
 n_embd = 384
 n_head = 6
@@ -98,7 +92,7 @@ save_every = 10
 
 
 text = read_all_files_to_string("data")
-train_data, val_data, encode, decode, vocab_size = prepare_data(text)
+train_data, encode, decode, vocab_size = prepare_data(text)
 
 
 def ddp_setup():
@@ -107,9 +101,9 @@ def ddp_setup():
 
 
 def load_train_objs():
-    train_dataset = TextDataset(torch.cat([train_data, val_data]), block_size)
+    train_dataset = TextDataset(train_data, block_size)
 
-    model = GPTLanguageModel(
+    model = GPT(
         vocab_size,
         n_embd,
         block_size,
@@ -118,7 +112,9 @@ def load_train_objs():
         dropout,
     )
 
-    return train_dataset, model, AdamW(model.parameters(), lr=learning_rate)
+    optimizer = AdamW(model.parameters(), lr=learning_rate)
+
+    return train_dataset, model, optimizer
 
 
 def prepare_dataloader(dataset: Dataset, batch_size: int):
@@ -140,7 +136,6 @@ def main(
     ddp_setup()
     dataset, model, optimizer = load_train_objs()
     train_loader = prepare_dataloader(dataset, batch_size)
-    print(len(train_loader))
     trainer = Trainer(model, train_loader, optimizer, save_every, snapshot_path)
     trainer.train(total_epochs)
     destroy_process_group()

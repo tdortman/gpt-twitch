@@ -3,14 +3,17 @@ import os
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
+from torch.optim import Optimizer
+from torch.nn import Module
+from torch import Tensor
 
 
 class Trainer:
     def __init__(
         self,
-        model: torch.nn.Module,
+        model: Module,
         train_data: DataLoader,
-        optimizer: torch.optim.Optimizer,
+        optimizer: Optimizer,
         save_every: int,
         snapshot_path: str,
     ) -> None:
@@ -27,14 +30,14 @@ class Trainer:
 
         self.model = DDP(self.model, device_ids=[self.gpu_id])
 
-    def _load_snapshot(self, snapshot_path):
+    def _load_snapshot(self, snapshot_path: str):
         loc = f"cuda:{self.gpu_id}"
         snapshot = torch.load(snapshot_path, map_location=loc)
         self.model.load_state_dict(snapshot["MODEL_STATE"])
         self.epochs_run = snapshot["EPOCHS_RUN"]
         print(f"Resuming training from snapshot at Epoch {self.epochs_run}")
 
-    def _run_batch(self, source, targets):
+    def _run_batch(self, source: Tensor, targets: Tensor):
         self.optimizer.zero_grad()
         _, loss = self.model(source, targets)
         loss.backward()
@@ -50,9 +53,8 @@ class Trainer:
         targets = targets.to(self.gpu_id)
         loss = self._run_batch(source, targets)
 
-
         print(
-            f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {b_sz} | Loss: {loss:.4f}| Steps: {len(self.train_data)}"
+            f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {b_sz} | Loss: {loss:.4f}"
         )
 
     def _save_snapshot(self, epoch):
