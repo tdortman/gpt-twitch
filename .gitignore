@@ -4,3 +4,4 @@ data
 __pycache__
 *.pt
 model_tf
+snapshot.pt

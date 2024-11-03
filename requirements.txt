@@ -6,3 +6,4 @@ ipykernel
 scikit-learn
 colorlog
 tqdm
+torch
