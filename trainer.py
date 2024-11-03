@@ -48,13 +48,19 @@ class Trainer:
     def _run_epoch(self, epoch: int):
         b_sz = len(next(iter(self.train_data))[0])
         self.train_data.sampler.set_epoch(epoch)
-        source, targets = next(iter(self.train_data))
-        source = source.to(self.gpu_id)
-        targets = targets.to(self.gpu_id)
-        loss = self._run_batch(source, targets)
+
+        avg_loss = 0
+        n_batches = len(self.train_data)
+
+        for source, targets in self.train_data:
+            source = source.to(self.gpu_id)
+            targets = targets.to(self.gpu_id)
+            avg_loss += self._run_batch(source, targets)
+
+        avg_loss /= n_batches
 
         print(
-            f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {b_sz} | Loss: {loss:.4f}"
+            f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {b_sz} | Avg Loss: {avg_loss:.4f}"
         )
 
     def _save_snapshot(self, epoch):
