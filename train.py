@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 
 from model import GPT
-from trainer import Trainer  # Import Trainer class from the appropriate module
+from trainer import Trainer
 
 
 def read_file(filepath):
@@ -82,16 +82,19 @@ class TextDataset(Dataset):
 
 batch_size = 128
 block_size = 128
-max_epochs = 100
+max_epochs = 1000
 learning_rate = 3e-4
 n_embd = 384
 n_head = 6
 n_layer = 6
 dropout = 0.2
-save_every = 10
+save_interval = 10
 
 
-text = read_all_files_to_string("data")
+directory = "data"
+snapshot_path = f"{directory.replace('/', '_')}.pt"
+
+text = read_all_files_to_string(directory)
 train_data, encode, decode, vocab_size = prepare_data(text)
 
 
@@ -128,7 +131,7 @@ def prepare_dataloader(dataset: Dataset, batch_size: int):
 
 
 def main(
-    save_every: int,
+    save_interval: int,
     total_epochs: int,
     batch_size: int,
     snapshot_path: str = "snapshot.pt",
@@ -136,10 +139,10 @@ def main(
     ddp_setup()
     dataset, model, optimizer = load_train_objs()
     train_loader = prepare_dataloader(dataset, batch_size)
-    trainer = Trainer(model, train_loader, optimizer, save_every, snapshot_path)
+    trainer = Trainer(model, train_loader, optimizer, save_interval, snapshot_path)
     trainer.train(total_epochs)
     destroy_process_group()
 
 
 if __name__ == "__main__":
-    main(save_every, max_epochs, batch_size)
+    main(save_interval, max_epochs, batch_size)

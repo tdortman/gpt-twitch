@@ -49,18 +49,15 @@ class Trainer:
         b_sz = len(next(iter(self.train_data))[0])
         self.train_data.sampler.set_epoch(epoch)
 
-        avg_loss = 0
-        n_batches = len(self.train_data)
-
-        for source, targets in self.train_data:
-            source = source.to(self.gpu_id)
-            targets = targets.to(self.gpu_id)
-            avg_loss += self._run_batch(source, targets)
-
-        avg_loss /= n_batches
+        # This is not ideal, but I literally do not have the resources to go through all the data
+        # as part of every single epoch. This should be "good enough" for now.
+        source, targets = next(iter(self.train_data))
+        source = source.to(self.gpu_id)
+        targets = targets.to(self.gpu_id)
+        loss = self._run_batch(source, targets)
 
         print(
-            f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {b_sz} | Avg Loss: {avg_loss:.4f}"
+            f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {b_sz} | Loss: {loss:.4f}"
         )
 
     def _save_snapshot(self, epoch):
@@ -72,7 +69,7 @@ class Trainer:
         print(f"Epoch {epoch} | Training snapshot saved at {self.snapshot_path}")
 
     def train(self, max_epochs: int):
-        for epoch in range(self.epochs_run, max_epochs):
+        for epoch in range(self.epochs_run + 1, max_epochs + 1):
             self._run_epoch(epoch)
-            if self.gpu_id == 0 and (epoch + 1) % self.save_every == 0:
+            if self.gpu_id == 0 and epoch % self.save_every == 0:
                 self._save_snapshot(epoch)
