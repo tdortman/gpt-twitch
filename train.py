@@ -107,7 +107,7 @@ def ddp_setup():
 
 
 def load_train_objs():
-    train_dataset = TextDataset(train_data, block_size)
+    train_dataset = TextDataset(torch.cat([train_data, val_data]), block_size)
 
     model = GPTLanguageModel(
         vocab_size,
