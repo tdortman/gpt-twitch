@@ -145,4 +145,4 @@ def main(
 
 
 if __name__ == "__main__":
-    main(save_interval, max_epochs, batch_size)
+    main(save_interval, max_epochs, batch_size, snapshot_path)
