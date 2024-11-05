@@ -5,3 +5,4 @@ __pycache__
 *.pt
 model_tf
 snapshot.pt
+*.pkl

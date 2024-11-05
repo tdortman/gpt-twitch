@@ -6,6 +6,8 @@ from torch.utils.data import DataLoader
 from torch.optim import Optimizer
 from torch.nn import Module
 from torch import Tensor
+from torch.amp import GradScaler, autocast
+import torch.distributed as dist
 
 
 class Trainer:
@@ -24,6 +26,8 @@ class Trainer:
         self.save_every = save_every
         self.epochs_run = 0
         self.snapshot_path = snapshot_path
+        self.scaler = GradScaler("cuda")
+
         if os.path.exists(snapshot_path):
             print("Loading snapshot")
             self._load_snapshot(snapshot_path)
@@ -39,9 +43,15 @@ class Trainer:
 
     def _run_batch(self, source: Tensor, targets: Tensor):
         self.optimizer.zero_grad()
-        _, loss = self.model(source, targets)
-        loss.backward()
-        self.optimizer.step()
+        with autocast("cuda"):
+            _, loss = self.model(source, targets)
+
+        dist.all_reduce(loss, op=dist.ReduceOp.SUM)
+        loss /= dist.get_world_size()
+
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
 
         return loss.item()
 
@@ -56,9 +66,8 @@ class Trainer:
         targets = targets.to(self.gpu_id)
         loss = self._run_batch(source, targets)
 
-        print(
-            f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {b_sz} | Loss: {loss:.4f}"
-        )
+        if self.gpu_id == 0:
+            print(f"Epoch {epoch} | Batchsize: {b_sz} | Loss: {loss:.4f}")
 
     def _save_snapshot(self, epoch):
         snapshot = {

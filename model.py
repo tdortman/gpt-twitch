@@ -4,43 +4,95 @@ import torch.nn.functional as F
 
 
 class Head(nn.Module):
-    """one head of self-attention"""
+    """One head of self-attention within a group"""
 
-    def __init__(self, head_size, n_embd, dropout, block_size):
+    def __init__(
+        self,
+        head_size: int,
+        n_embd: int,
+        dropout: float,
+        block_size: int,
+        shared_kv=False,
+    ):
         super().__init__()
-        self.key = nn.Linear(n_embd, head_size, bias=False)
         self.query = nn.Linear(n_embd, head_size, bias=False)
-        self.value = nn.Linear(n_embd, head_size, bias=False)
-        self.register_buffer("tril", torch.tril(torch.ones(block_size, block_size)))
 
+        if shared_kv:
+            self.key = None
+            self.value = None
+        else:
+            self.key = nn.Linear(n_embd, head_size, bias=False)
+            self.value = nn.Linear(n_embd, head_size, bias=False)
+
+        self.register_buffer("tril", torch.tril(torch.ones(block_size, block_size)))
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
+    def forward(self, x, shared_k, shared_v):
         B, T, C = x.shape
-        k = self.key(x)
         q = self.query(x)
+
+        k = shared_k if shared_k is not None else self.key(x)
+        v = shared_v if shared_v is not None else self.value(x)
+
         wei = q @ k.transpose(-2, -1) * k.shape[-1] ** -0.5
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))
         wei = F.softmax(wei, dim=-1)
         wei = self.dropout(wei)
-        v = self.value(x)
         out = wei @ v
         return out
 
 
 class MultiHeadAttention(nn.Module):
-    """multiple heads of self-attention in parallel"""
+    """Multiple heads of self-attention with grouped query attention"""
 
-    def __init__(self, num_heads, head_size, dropout, n_embd, block_size):
+    def __init__(
+        self,
+        num_heads: int,
+        head_size: int,
+        dropout: float,
+        n_embd: int,
+        block_size: int,
+        num_groups: int,
+    ):
         super().__init__()
-        self.heads = nn.ModuleList(
-            [Head(head_size, n_embd, dropout, block_size) for _ in range(num_heads)]
+
+        assert (
+            num_heads % num_groups == 0
+        ), "Number of heads must be divisible by number of groups."
+
+        self.num_groups = num_groups
+        self.heads_per_group = num_heads // num_groups
+
+        self.groups = nn.ModuleList()
+        for _ in range(num_groups):
+            group_heads = nn.ModuleList(
+                [
+                    Head(head_size, n_embd, dropout, block_size, shared_kv=True)
+                    for _ in range(self.heads_per_group)
+                ]
+            )
+            self.groups.append(group_heads)
+
+        self.shared_keys = nn.ModuleList(
+            [nn.Linear(n_embd, head_size, bias=False) for _ in range(num_groups)]
         )
+        self.shared_values = nn.ModuleList(
+            [nn.Linear(n_embd, head_size, bias=False) for _ in range(num_groups)]
+        )
+
         self.proj = nn.Linear(head_size * num_heads, n_embd)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        out = torch.cat([h(x) for h in self.heads], dim=-1)
+        group_outputs = []
+        for group_idx, group_heads in enumerate(self.groups):
+            shared_k = self.shared_keys[group_idx](x)
+            shared_v = self.shared_values[group_idx](x)
+
+            group_out = [head(x, shared_k, shared_v) for head in group_heads]
+            group_outputs.extend(group_out)
+
+        out = torch.cat(group_outputs, dim=-1)
         out = self.dropout(self.proj(out))
         return out
 
@@ -64,10 +116,24 @@ class MLP(nn.Module):
 class Block(nn.Module):
     """Transformer block: communication followed by computation"""
 
-    def __init__(self, n_embd, n_head, dropout, block_size,):
+    def __init__(
+        self,
+        n_embd: int,
+        n_head: int,
+        dropout: float,
+        block_size: int,
+        num_groups: int,
+    ):
         super().__init__()
         head_size = n_embd // n_head
-        self.sa = MultiHeadAttention(n_head, head_size, dropout, n_embd, block_size)
+        self.sa = MultiHeadAttention(
+            n_head,
+            head_size,
+            dropout,
+            n_embd,
+            block_size,
+            num_groups,
+        )
         self.mlp = MLP(n_embd, dropout)
         self.ln1 = nn.LayerNorm(n_embd)
         self.ln2 = nn.LayerNorm(n_embd)
@@ -81,12 +147,13 @@ class Block(nn.Module):
 class GPT(nn.Module):
     def __init__(
         self,
-        vocab_size,
-        n_embd,
-        block_size,
-        n_layer,
-        n_head,
-        dropout,
+        vocab_size: int,
+        n_embd: int,
+        block_size: int,
+        n_layer: int,
+        n_head: int,
+        dropout: float,
+        num_groups: int,
     ):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
@@ -98,6 +165,7 @@ class GPT(nn.Module):
                     n_head=n_head,
                     dropout=dropout,
                     block_size=block_size,
+                    num_groups=num_groups,
                 )
                 for _ in range(n_layer)
             ]
