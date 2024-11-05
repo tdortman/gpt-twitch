@@ -51,7 +51,7 @@ def generate(
     n_head: int = Option(6, help="Number of attention heads to use for the model"),
     n_layer: int = Option(6, help="Number of blocks to use for the model"),
     dropout: float = Option(0.2, help="Dropout rate to use for the model"),
-    num_groups: int = Option(3, help="Number of groups to use grouped attention"),
+    n_groups: int = Option(3, help="Number of groups to use grouped attention"),
     block_size: int = Option(128, help="Block size to use for the model"),
     num_tokens: int = Option(100, help="Number of tokens to generate"),
     reset_cache: bool = Option(False, help="Reset the cache before generating"),
@@ -69,7 +69,7 @@ def generate(
         n_layer,
         n_head,
         dropout,
-        num_groups,
+        n_groups,
     ).cuda()
 
     model.load_state_dict(torch.load(snapshot_path)["MODEL_STATE"])
@@ -88,7 +88,7 @@ def train(
     n_head: int = Option(6, help="Number of attention heads to use for the model"),
     n_layer: int = Option(6, help="Number of blocks to use for the model"),
     dropout: float = Option(0.2, help="Dropout rate to use for the model"),
-    num_groups: int = Option(3, help="Number of groups to use for grouped attention"),
+    n_groups: int = Option(3, help="Number of groups to use for grouped attention"),
     block_size: int = Option(128, help="Block size to use for the model"),
     total_epochs: int = Option(2000, help="Maximum number of epochs to train for"),
     reset_cache: bool = Option(False, help="Reset the cache before preparing data"),
@@ -109,7 +109,7 @@ def train(
         n_layer,
         n_head,
         dropout,
-        num_groups,
+        n_groups,
     )
 
     optimizer = AdamW(model.parameters(), lr=learning_rate)

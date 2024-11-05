@@ -7,7 +7,6 @@ from torch.optim import Optimizer
 from torch.nn import Module
 from torch import Tensor
 from torch.amp import GradScaler, autocast
-import torch.distributed as dist
 
 
 class Trainer:
