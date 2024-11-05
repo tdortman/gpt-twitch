@@ -7,3 +7,4 @@ scikit-learn
 colorlog
 tqdm
 torch
+typer

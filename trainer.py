@@ -46,9 +46,6 @@ class Trainer:
         with autocast("cuda"):
             _, loss = self.model(source, targets)
 
-        dist.all_reduce(loss, op=dist.ReduceOp.SUM)
-        loss /= dist.get_world_size()
-
         self.scaler.scale(loss).backward()
         self.scaler.step(self.optimizer)
         self.scaler.update()
