@@ -1,4 +1,3 @@
-import argparse
 import requests
 import os
 from dotenv import load_dotenv
@@ -9,6 +8,7 @@ from concurrent.futures import ProcessPoolExecutor
 import logging
 from datetime import datetime
 from colorlog import ColoredFormatter
+import typer
 
 load_dotenv()
 
@@ -16,12 +16,12 @@ load_dotenv()
 formatter = ColoredFormatter(
     "%(log_color)s[%(levelname)s] - %(message)s",
     log_colors={
-        'DEBUG': 'cyan',
-        'INFO': 'green',
-        'WARNING': 'yellow',
-        'ERROR': 'red',
-        'CRITICAL': 'bold_red',
-    }
+        "DEBUG": "cyan",
+        "INFO": "green",
+        "WARNING": "yellow",
+        "ERROR": "red",
+        "CRITICAL": "bold_red",
+    },
 )
 
 handler = logging.StreamHandler()
@@ -33,7 +33,7 @@ logger.setLevel(logging.INFO)
 
 
 class TwitchVODFetcher:
-    def __init__(self, client_id, client_secret):
+    def __init__(self, client_id: str, client_secret: str):
         self.client_id = client_id
         self.client_secret = client_secret
         self.base_url = "https://api.twitch.tv/helix"
@@ -50,7 +50,7 @@ class TwitchVODFetcher:
         response = requests.post(auth_url, params=params)
         return response.json()["access_token"]
 
-    def _get_user_id(self, username):
+    def _get_user_id(self, username: str):
         headers = {
             "Client-ID": self.client_id,
             "Authorization": f"Bearer {self.access_token}",
@@ -65,7 +65,7 @@ class TwitchVODFetcher:
         data = response.json()["data"]
         return data[0]["id"] if data else None
 
-    def get_vods(self, username):
+    def get_vods(self, username: str):
         user_id = self._get_user_id(username)
         if not user_id:
             raise ValueError(f"User {username} not found")
@@ -164,33 +164,11 @@ def download_and_process_vod(args):
         return id, False, f"Error: {str(e)}"
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--username",
-        "-u",
-        help="Twitch username to fetch VODs for",
-        type=str,
-        required=True,
-    )
-    parser.add_argument(
-        "--quiet",
-        "-q",
-        action="store_true",
-        help="Capture output instead of showing it",
-        required=False,
-    )
-    parser.add_argument(
-        "--jobs",
-        "-j",
-        help="Number of VODs to download in parallel (default: cpu_count() // 4)",
-        required=False,
-        type=int,
-        default=mp.cpu_count() // 4,
-    )
-
-    args = parser.parse_args()
-
+def main(
+    username: str = typer.Argument(help="Twitch username to fetch VODs for"),
+    quiet: bool = typer.Option(False, help="Capture output instead of showing it"),
+    jobs: int = typer.Option(mp.cpu_count() // 4, help="Number of VODs to download in parallel"),
+):
     # Check dependencies
     for cmd in ["twitchdownloadercli", "sd"]:
         if sp.run(["which", cmd], capture_output=True).returncode != 0:
@@ -202,23 +180,21 @@ def main():
         os.getenv("TWITCH_CLIENT_SECRET"),
     )
 
-    logger.info(f"Fetching VODs for user {args.username}")
-    vods = fetcher.get_vods(args.username)
+    logger.info(f"Fetching VODs for user {username}")
+    vods = fetcher.get_vods(username)
     logger.info(f"Found {len(vods)} VODs")
 
-    data_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "data", args.username)
-    )
+    data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", username))
 
     os.makedirs(data_dir, exist_ok=True)
 
     # Prepare work items
-    work_items = [(vod["id"], data_dir, args.quiet, args.jobs) for vod in vods]
+    work_items = [(vod["id"], data_dir, quiet, jobs) for vod in vods]
 
-    logger.info(f"Starting download with {args.jobs} parallel processes")
+    logger.info(f"Starting download with {jobs} parallel processes")
     start_time = datetime.now()
 
-    with ProcessPoolExecutor(max_workers=args.jobs) as executor:
+    with ProcessPoolExecutor(max_workers=jobs) as executor:
         results = list(executor.map(download_and_process_vod, work_items))
 
     duration = datetime.now() - start_time
@@ -236,4 +212,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)
