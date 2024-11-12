@@ -183,6 +183,10 @@ def main(
     username: str = typer.Argument(help="Twitch username to fetch VODs for"),
     show_progress: bool = typer.Option(False, help="Hide progress bar"),
     jobs: int = typer.Option(2, help="Number of VODs to download in parallel"),
+    directory: Path = typer.Option(
+        Path(os.getcwd()) / "data",
+        help="Directory to save the downloaded VODs to",
+    ),
 ):
     for cmd in ["twitchdownloadercli", "sd"]:
         if sp.run(["which", cmd], capture_output=True).returncode != 0:
@@ -198,14 +202,7 @@ def main(
     vods = fetcher.get_vods(username)
     logger.info(f"Found {len(vods)} VODs")
 
-    data_dir = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "data",
-            username,
-        ),
-    )
+    data_dir = os.path.abspath(directory / username)
 
     os.makedirs(data_dir, exist_ok=True)
 
